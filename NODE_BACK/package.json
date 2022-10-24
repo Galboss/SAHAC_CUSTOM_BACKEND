@@ -1,0 +1,18 @@
+{
+  "name": "node_back",
+  "version": "1.0.0",
+  "description": "SAHACH_CUSTOM_BACKEND develop on node.js",
+  "main": "index.js",
+  "scripts": {
+    "start": "nodemon src/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Galboss",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.0.3",
+    "express": "^4.18.2",
+    "mysql": "^2.18.1",
+    "nodemon": "^2.0.20"
+  }
+}
