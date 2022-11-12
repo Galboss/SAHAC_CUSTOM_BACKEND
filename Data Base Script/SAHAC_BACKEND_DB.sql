@@ -113,7 +113,7 @@ FOREIGN KEY (classroom_id) REFERENCES classroom(classroom_id);
 
 -- FOREIGN KEYS ORGANIZATION_USERS
 ALTER TABLE organization_users ADD user_id INT UNSIGNED NOT NULL;
-ALTER TABLE organization_users ADD CONSTRAINT FK_ORGANIZATION_USERS_USER
+ALTER TABLE organization_users ADD CONSTRAINT FK_ORGANIZATION_USERS_USERS
 FOREIGN KEY (user_id) REFERENCES `user`(user_id);
 
 -- UNIQUE CONSTRAINTS
@@ -166,14 +166,13 @@ CHECK (lesson_day IN ('SUN','MON','TUE','WES','THU','FRI','SAT'));
 -- STORAGE PROCEDURES
     -- user
 DELIMITER //
-CREATE PROCEDURE IF NOT EXISTS create_new_user( IN p_name varchar(50),
+CREATE PROCEDURE IF NOT EXISTS create_new_user(IN p_name varchar(50),
 IN p_email varchar(50), IN p_password varchar(50))
     BEGIN
     IF (p_email IS NULL OR p_name IS NULL OR p_password IS NULL) THEN 
         SIGNAL SQLSTATE '20000' SET MESSAGE_TEXT = 'Some parameters are null or empty.';
     ELSE
-
-        INSERT INTO `user` ( user_name,user_email,user_password,user_rol) 
+        INSERT INTO `user` (user_name,user_email,user_password,user_rol) 
         VALUES(p_name,p_email,p_password,3);
     END IF;
     END //
@@ -198,14 +197,20 @@ DELIMITER ;
 
 -- organization
 DELIMITER //
-CREATE PROCEDURE IF NOT EXISTS create_organization(IN p_name varchar(50))
+CREATE PROCEDURE IF NOT EXISTS create_organization(IN p_name varchar(50),IN p_user_id INT UNSIGNED)
     BEGIN
+    DECLARE v_count INT UNSIGNED;
     IF p_name IS NULL OR p_name = '' THEN
         SIGNAL SQLSTATE '20000' SET MESSAGE_TEXT = 'Some parameters are null or empty.';
     ELSE
-       INSERT INTO organization ( organization_name ) VALUES(
-           p_name
-       );
+        SELECT COUNT(o.organization_id) from organization o INNER JOIN organization_users ou WHERE
+        o.organization_name = p_name AND ou.user_id=p_user_id INTO v_count;
+        IF v_count != 0 THEN
+            SIGNAL SQLSTATE '20002' SET MESSAGE_TEXT = 
+            'There is another organization with that name register';
+        ELSE
+            INSERT INTO organization ( organization_name ) VALUES(p_name);
+        END IF;
     END IF;
     END //
 DELIMITER ;
@@ -242,7 +247,7 @@ CREATE PROCEDURE IF NOT EXISTS create_organization_user_admin (IN p_organization
         SIGNAL SQLSTATE '20000' SET MESSAGE_TEXT = 'Some parameters are null or empty.';
     ELSE
        INSERT INTO organization_users ( organization_users_rol, organization_id, user_id ) 
-       VALUES ( 1,p_organization_id, p_organization_id );
+       VALUES ( 1,p_organization_id, p_user_id);
     END IF;
     END //
 DELIMITER ;
@@ -309,8 +314,9 @@ CREATE PROCEDURE IF NOT EXISTS create_organization_users_organization(IN p_name 
 ,IN p_user_id INT)
     BEGIN
         DECLARE v_last_id INT;
-        CALL create_organization(p_name);
-        SELECT LAST_INSERT_ID() INTO v_last_id;
+        CALL create_organization(p_name,p_user_id);
+        SELECT MAX(organization_id) from organization WHERE organization_name = p_name 
+        INTO v_last_id;
         CALL create_organization_user_admin(v_last_id,p_user_id);
     END //
 DELIMITER ;
