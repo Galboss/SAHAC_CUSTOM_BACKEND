@@ -397,7 +397,7 @@ IN p_org_id INT UNSIGNED, IN p_assign_id INT UNSIGNED)
             SIGNAL SQLSTATE '20000' SET MESSAGE_TEXT = 'Some parameters are null or empty.';
         ELSE
            INSERT INTO course ( course_name, course_code, organization_id, assignment_id ) VALUES(
-            p_name. p_code, p_org_id, p_assign_id );
+            p_name, p_code, p_org_id, p_assign_id );
         END IF;
     END //
 DELIMITER ;
@@ -424,7 +424,7 @@ CREATE PROCEDURE IF NOT EXISTS select_courses_by_organization (IN p_org_id INT U
             SIGNAL SQLSTATE '20000' SET MESSAGE_TEXT = 'Some parameters are null or empty.';
         ELSE
             SELECT course_id, course_name, course_code, organization_id, assignment_id
-            WHERE organization_id = p_org_id;
+            FROM course WHERE organization_id = p_org_id;
         END IF;
     END //
 DELIMITER ;
@@ -437,7 +437,7 @@ IN p_assign_id INT UNSIGNED)
             SIGNAL SQLSTATE '20000' SET MESSAGE_TEXT = 'Some parameters are null or empty.';
         ELSE
             SELECT course_id, course_name, course_code, organization_id, assignment_id
-            WHERE organization_id = p_org_id AND assignment_id = p_assign_id;
+            FROM course WHERE organization_id = p_org_id AND assignment_id = p_assign_id;
         END IF;
     END //
 DELIMITER ;
