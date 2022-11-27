@@ -5,7 +5,8 @@ const con = mysql.createPool({
     user: `${process.env.DB_USER}`,
     password: `${process.env.DB_PASS}`,
     database: `${process.env.DB_NAME}`,
-    connectionLimit: 10
+    connectionLimit: 10,
+    charset: 'UTF8_GENERAL_CI'
 });
 
 con.getConnection((err,connection)=>{

@@ -1,5 +1,5 @@
 -- DEFINITION OF THE DATABASE
-DROP SCHEMA SAHAC_CUSTOM_DB;
+DROP SCHEMA IF EXISTS SAHAC_CUSTOM_DB;
 CREATE DATABASE IF NOT EXISTS SAHAC_CUSTOM_DB;
 USE SAHAC_CUSTOM_DB;
 
@@ -15,6 +15,7 @@ DROP TABLE IF EXISTS assignment;
 DROP TABLE IF EXISTS assignment_category;
 DROP TABLE IF EXISTS teacher;
 DROP TABLE IF EXISTS organization_users;
+DROP TABLE IF EXISTS refresh_token;
 SET foreign_key_checks=1;
 
 -- DEFINITION OF THE TABLES
@@ -43,6 +44,8 @@ organization_users_rol TINYINT UNSIGNED NOT NULL);
 CREATE TABLE lesson (lesson_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
 lesson_day VARCHAR(3) NOT NULL, lesson_begin TIME NOT NULL,
 lesson_end TIME NOT NULL);
+CREATE TABLE refresh_token(token TEXT NOT NULL,access_expiration DATETIME NOT NULL,
+expiration DATETIME NOT NULL);
 
 -- PRIMARY KEYS
 -- ALTER TABLE organization ADD PRIMARY KEY(organization_id);
@@ -167,7 +170,7 @@ CHECK (lesson_day IN ('SUN','MON','TUE','WES','THU','FRI','SAT'));
     -- user
 DELIMITER //
 CREATE PROCEDURE IF NOT EXISTS create_new_user(IN p_name varchar(50),
-IN p_email varchar(50), IN p_password varchar(50))
+IN p_email varchar(50), IN p_password varchar(60))
     BEGIN
     IF (p_email IS NULL OR p_name IS NULL OR p_password IS NULL) THEN 
         SIGNAL SQLSTATE '20000' SET MESSAGE_TEXT = 'Some parameters are null or empty.';
@@ -175,6 +178,18 @@ IN p_email varchar(50), IN p_password varchar(50))
         INSERT INTO `user` (user_name,user_email,user_password,user_rol) 
         VALUES(p_name,p_email,p_password,3);
     END IF;
+    END //
+DELIMITER ;
+
+DELIMITER //
+CREATE PROCEDURE IF NOT EXISTS select_user_by_email(IN p_email VARCHAR(50))
+    BEGIN
+        IF (p_email IS NULL OR p_email = "") THEN 
+        SIGNAL SQLSTATE '20000' SET MESSAGE_TEXT = 'Some parameters are null or empty.';
+        ELSE
+            SELECT user_id,user_name,user_email,user_password,user_rol FROM `user` 
+            WHERE user_email = p_email;
+        END IF;
     END //
 DELIMITER ;
 
@@ -629,7 +644,7 @@ END //
 DELIMITER ;
 
 DELIMITER //
-CREATE PROCEDURE IF NOT EXISTS delete_a_group_from_course_id(IN p_course_id INT UNSIGNED,IN p_number INT UNSIGNED)
+CREATE PROCEDURE IF NOT EXISTS delete_a_group_from_course_by_id(IN p_course_id INT UNSIGNED,IN p_number INT UNSIGNED)
 BEGIN
     IF (p_course_id = 0 OR p_course_id IS NULL) OR (p_number = 0 OR p_number IS NULL) THEN
         SIGNAL SQLSTATE '20000' SET MESSAGE_TEXT = 'Some parameters are null or empty.';
@@ -652,41 +667,36 @@ BEGIN
 END //
 DELIMITER ;
 
--- DELIMITER //
--- CREATE PROCEDURE IF NOT EXISTS delete_group_by_number(IN p_course_id INT UNSIGNED,
--- IN p_number INT UNSIGNED)
--- BEGIN
---     DECLARE x_flag TINYINT DEFAULT(0);
---     DECLARE x_done TINYINT DEFAULT(0);
---     DECLARE x_course_id INT UNSIGNED;
---     DECLARE x_number INT UNSIGNED;
---     DECLARE x_id INT UNSIGNED;
---     IF (p_course_id == 0 OR p_course_id IS NULL) OR (p_number == 0 OR p_number IS NULL) THEN
---         SIGNAL SQLSTATE '20000' SET MESSAGE_TEXT = 'Some parameters are null or empty.';
---     ELSE
---         DECLARE x_cursor CURSOR FOR SELECT group_id,group_number,course_id 
---         FROM `group` WHERE course_id = p_course_id;
---         DECLARE CONTINUE HANDLER FOR NOT FOUND SET x_done = 0;
---         OPEN x_cursor;
---         x_cursor_loop: LOOP
---             FETCH x_cursor INTO x_id,x_number,x_course_id;
---             IF(x_flag == 0) THEN
---                 IF (x_number = p_number and x_course_id = p_course_id) THEN
---                     CALL delete_a_group_from_course_id(p_course_id,x_number);
---                     SET x_flag = 1;
---                 
---                 END IF;
---             ELSE IF (x_flag == 1) THEN
---                 CALL update_group_number(p_course_id,x_number,x_number-1);
---             END IF;
---             IF (x_done == 1) THEN
---                 LEAVE x_cursor_loop;
---             END IF;
---         END LOOP x_cursor_loop;
---         CLOSE x_cursor;
---     END IF; 
--- END //
--- DELIMITER ;
+DELIMITER //
+CREATE PROCEDURE IF NOT EXISTS delete_group_by_number(IN p_course_id INT UNSIGNED,
+IN p_number INT UNSIGNED)
+BEGIN
+    DECLARE x_flag INT DEFAULT FALSE;
+    DECLARE x_done INT DEFAULT FALSE;
+    DECLARE x_course_id INT UNSIGNED;
+    DECLARE x_number INT UNSIGNED;
+    DECLARE x_id INT UNSIGNED;
+    DECLARE x_cursor CURSOR FOR SELECT group_id,group_number,course_id 
+    FROM `group` WHERE course_id = p_course_id;
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET x_done = TRUE;
+    OPEN x_cursor;
+        x_cursor_loop: LOOP
+            FETCH x_cursor INTO x_id,x_number,x_course_id;
+            IF(x_flag = FALSE) THEN
+                IF (x_number = p_number AND x_course_id = p_course_id) THEN
+                    CALL delete_a_group_from_course_id(p_course_id,x_number);
+                    SET x_flag = TRUE;
+                END IF;
+            ELSE
+                CALL update_group_number(p_course_id,x_number,x_number-1);
+            END IF;
+            IF (x_done) THEN
+                LEAVE x_cursor_loop;
+            END IF;
+        END LOOP;
+    CLOSE x_cursor;
+END //
+DELIMITER ;
 
 -- LESSON PROCEDURES
 
@@ -789,6 +799,80 @@ BEGIN
       SIGNAL SQLSTATE '20000' SET MESSAGE_TEXT = 'Some parameters are null or empty.';  
     ELSE
         DELETE FROM classroom WHERE classroom_id = p_id;
+    END IF;
+END //
+DELIMITER ;
+
+-- Refresh Tokens procedures
+
+DELIMITER //
+CREATE PROCEDURE IF NOT EXISTS create_new_refresh_token(p_token TEXT,
+p_access_expiration BIGINT,p_expiration BIGINT)
+BEGIN
+    IF p_token = "" OR p_token IS NULL OR p_expiration IS NULL OR p_expiration=0 
+    OR p_access_expiration IS NULL OR p_access_expiration=0 THEN
+        SIGNAL SQLSTATE '20000' SET MESSAGE_TEXT = 'Some parameters are null or empty.';
+    ELSE
+       INSERT INTO refresh_token ( token,access_expiration,expiration ) VALUES(
+           p_token,FROM_UNIXTIME(p_access_expiration),FROM_UNIXTIME(p_expiration)
+       );
+    END IF; 
+END //
+DELIMITER ;
+
+DELIMITER //
+CREATE PROCEDURE IF NOT EXISTS select_token(p_token TEXT)
+BEGIN
+    IF p_token = "" OR p_token IS NULL THEN
+        SIGNAL SQLSTATE '20000' SET MESSAGE_TEXT = 'Some parameters are null or empty.';
+    ELSE
+        SELECT token,UNIX_TIMESTAMP(access_expiration) AS access_expiration,
+        UNIX_TIMESTAMP(expiration) AS expiration 
+        FROM refresh_token WHERE token=p_token;
+    END IF;
+END //
+DELIMITER ;
+
+DELIMITER //
+CREATE PROCEDURE IF NOT EXISTS update_token(p_token TEXT,
+p_access_expiration BIGINT,p_expiration BIGINT)
+BEGIN
+    IF (p_token = "" OR p_token IS NULL) AND (p_expiration IS NULL OR p_expiration=0) 
+    AND (p_access_expiration IS NULL OR p_access_expiration=0) THEN
+        SIGNAL SQLSTATE '20000' SET MESSAGE_TEXT = 'Some parameters are null or empty.';
+    ELSE
+        UPDATE refresh_token SET access_expiration = p_access_expiration,
+        expiration = p_expiration WHERE token = p_token;
+    END IF;
+END //
+DELIMITER ;
+
+DELIMITER //
+CREATE PROCEDURE IF NOT EXISTS delete_expired_tokens()
+BEGIN
+    DELETE FROM refresh_token where expiration <= NOW();
+END //
+DELIMITER ;
+
+DELIMITER //
+CREATE PROCEDURE IF NOT EXISTS invalidate_token(p_token TEXT)
+BEGIN
+    IF p_token = "" OR p_token IS NULL THEN
+        SIGNAL SQLSTATE '20000' SET MESSAGE_TEXT = 'Some parameters are null or empty.';
+    ELSE
+        DELETE FROM refresh_token WHERE token = p_token;
+    END IF;
+END //
+DELIMITER ;
+
+DELIMITER //
+CREATE PROCEDURE IF NOT EXISTS update_access_expiration(p_token TEXT,p_access_expiration BIGINT)
+BEGIN
+    IF p_token = "" OR p_token IS NULL AND p_access_expiration =0 THEN
+        SIGNAL SQLSTATE '20000' SET MESSAGE_TEXT = 'Some parameters are null or empty.';
+    ELSE
+        UPDATE refresh_token SET access_expiration = FROM_UNIXTIME(p_access_expiration)
+        where token = p_token;
     END IF;
 END //
 DELIMITER ;

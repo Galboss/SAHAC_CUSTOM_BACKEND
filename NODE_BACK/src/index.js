@@ -5,5 +5,6 @@ const port = process.env.PORT||7070;
 const routes = require('./routes/routes');
 const con = require('./database/connection'); // *This is the connection with the database
 app.use(express.json());
+app.use(express.urlencoded({extended:true}));
 app.listen(port,()=>{console.log(`Listening on port ${port} ...`)});
 app.use('/api',routes);
